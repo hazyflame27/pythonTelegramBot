@@ -1,47 +1,96 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-token = '611151625:AAFt98982QlxdELv4SNJLTOYqpVWxJfTP6s'
+from email.mime.text import MIMEText
+from email.header import Header
+import smtplib
+import sqlite3
+
+action = ''
+email = ''
 
 
 def start(bot, update):
-  update.message.reply_text("I'm a bot, Nice to meet you!")
+    global action
+    update.message.reply_text("I'm a bot, Nice to meet you!")
+    update.message.reply_text("Please enter your email: ")
+    action = 'sendEmail'
 
-  
-def convert_uppercase(bot, update):
-  update.message.reply_text(update.message.text.upper())
 
-  
-def replyHello(bot, update):
-    text = update.message.text
-    if text == "Hi":
-#         bot.send_message(update.message.chat_id, "Hello " + str(update.message.from_user))
-        bot.send_message(update.message.chat_id, "Hello " + str(update.message.from_user.last_name) + " " + str(update.message.from_user.first_name))
+def doAction(bot, update):
+    global email
+    try:
+        text = update.message.text
+        verifyCode = '123456'
+        if action == 'sendEmail':
+            email = text;
+            sendEmail(bot, update, text, verifyCode)
+        elif action == 'insertDB':
+            insertDB(bot, update, text, verifyCode, email)
+        elif action == 'Done':
+            bot.send_message(update.message.chat_id, 'You are verified!')
+    except Exception as e:
+        print('Error: ' + str(e))
+
+
+def sendEmail(bot, update, receiver, verifyCode):
+    global action
+    sender = 'Hazyflame.quilava@gmail.com'
+    password = 'hoangtunai'
+    subject = 'SMTP test'
+
+    message = MIMEText(verifyCode, 'html', 'utf-8')
+    message['From'] = sender
+    message['To'] = receiver
+    message['Subject'] = Header(subject, 'utf-8')
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.connect('smtp.gmail.com', 587)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(sender, password)
+        server.sendmail(sender, receiver, message.as_string())
+        bot.send_message(update.message.chat_id, 'Send email success. Please enter code in email: ')
+        action = 'insertDB'
+    except smtplib.SMTPException as e:
+        print('Error: ' + str(e))
+        bot.send_message(update.message.chat_id, 'Send email error. Please enter your email: ')
+
+
+def insertDB(bot, update, text, verifyCode, email):
+    global action
+    if text == verifyCode:
+        try:
+            conn = sqlite3.connect('telegram.db', check_same_thread=False)
+            c = conn.cursor()
+            c.execute('''CREATE TABLE IF NOT EXISTS telegram(user_id text, user_name text, email text)''')
+            c.execute('INSERT INTO telegram VALUES (?,?,?)',
+                      (update.message.from_user.username,
+                       update.message.from_user.last_name + ' ' + update.message.from_user.first_name, email))
+            conn.commit()
+            conn.close()
+            bot.send_message(update.message.chat_id, 'Insert user success')
+            action = 'Done'
+        except Exception as e:
+            print('Error: ' + str(e))
+            bot.send_message(update.message.chat_id, "Insert fail")
     else:
-        bot.send_message(update.message.chat_id, "Hello everybody")
+        bot.send_message(update.message.chat_id, "Wrong code. Please enter code in email: ")
 
 
 def main():
-  # Create Updater object and attach dispatcher to it
-  updater = Updater(token)
-  dispatcher = updater.dispatcher
-  print("Bot started")
+    token = '611151625:AAFt98982QlxdELv4SNJLTOYqpVWxJfTP6s'
+    updater = Updater(token)
+    dispatcher = updater.dispatcher
+    print("Bot started")
 
-  # Add command handler to dispatcher
-  start_handler = CommandHandler('start', start)
-  dispatcher.add_handler(start_handler)
-  
-#   upper
-#   upper_case = MessageHandler(Filters.text, convert_uppercase)
-#   dispatcher.add_handler(upper_case)
+    start_handler = CommandHandler('start', start)
+    dispatcher.add_handler(start_handler)
+    mainHandler = MessageHandler(Filters.text, doAction)
+    dispatcher.add_handler(mainHandler)
 
-# reply helo
-  hello = MessageHandler(Filters.text, replyHello)
-  dispatcher.add_handler(hello);
-
-  # Start the bot
-  updater.start_polling()
-
-  # Run the bot until you press Ctrl-C
-  updater.idle()
+    updater.start_polling()
+    updater.idle()
 
 
 if __name__ == '__main__':
