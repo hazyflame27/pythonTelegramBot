@@ -10,18 +10,35 @@ email = ''
 
 def getAction(userId):
     global action
-    conn = sqlite3.connect('user.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS user(user_id text, step text)''')
-    c.execute('SELECT step from user where user_id = ?', (userId,))
-    row = c.fetchone()
-    if row is None:
-        c.execute('INSERT INTO user VALUES (?,?)', (userId, 'sendEmail'))
-        action = 'sendEmail'
-    else:
-        action = row[0]
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('user.db', check_same_thread=False)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS user(user_id text, step text, email text)''')
+        c.execute('SELECT step from user where user_id = ?', (userId,))
+        row = c.fetchone()
+        if row is None:
+            c.execute('INSERT INTO user VALUES (?,?,?)', (userId, 'sendEmail', ''))
+            action = 'sendEmail'
+        else:
+            action = row[0]
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print('Error: ' + str(e))
+
+
+def getEmail(userId):
+    global email
+    try:
+        conn = sqlite3.connect('user.db', check_same_thread=False)
+        c = conn.cursor()
+        c.execute('SELECT email from user where user_id = ?', (userId,))
+        row = c.fetchone()
+        if row is not None:
+            email = row[0]
+        conn.close()
+    except Exception as e:
+        print('Error: ' + str(e))
 
 
 def start(bot, update):
@@ -50,7 +67,7 @@ def doAction(bot, update):
             email = text;
             sendEmail(bot, update, text, verifyCode)
         elif action == 'insertDB':
-            insertDB(bot, update, text, verifyCode, email)
+            insertDB(bot, update, text, verifyCode)
         elif action == 'Done':
             bot.send_message(update.message.chat_id, 'You are verified!')
     except Exception as e:
@@ -81,7 +98,7 @@ def sendEmail(bot, update, receiver, verifyCode):
         action = 'insertDB'
         conn = sqlite3.connect('user.db', check_same_thread=False)
         c = conn.cursor()
-        c.execute('Update user set step = ? where user_id = ?', ('insertDB', update.message.from_user.id))
+        c.execute('Update user set step = ?, email = ? where user_id = ?', ('insertDB', receiver, update.message.from_user.id))
         conn.commit()
         conn.close()
         
@@ -91,9 +108,11 @@ def sendEmail(bot, update, receiver, verifyCode):
         bot.send_message(update.message.chat_id, 'Send email error. Please enter your email: ')
 
 
-def insertDB(bot, update, text, verifyCode, email):
+def insertDB(bot, update, text, verifyCode):
     global action
+    global email
     getAction(update.message.from_user.id)
+    getEmail(update.message.from_user.id)
     if text == verifyCode:
         try:
             conn = sqlite3.connect('telegram.db', check_same_thread=False)
