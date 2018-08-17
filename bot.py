@@ -3,21 +3,25 @@ from email.mime.text import MIMEText
 from email.header import Header
 import smtplib
 import sqlite3
+import numpy as np
 
 action = ''
 email = ''
+verifyCode = ''
 
 
 def getAction(userId):
     global action
+    global verifyCode
     try:
         conn = sqlite3.connect('user.db', check_same_thread=False)
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS user(user_id text, step text, email text)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS user(user_id text, step text, email text, verify_code text)''')
         c.execute('SELECT step from user where user_id = ?', (userId,))
         row = c.fetchone()
         if row is None:
-            c.execute('INSERT INTO user VALUES (?,?,?)', (userId, 'sendEmail', ''))
+            verifyCode = str(np.random.random_integers(100000, 999999, size=None))
+            c.execute('INSERT INTO user VALUES (?,?,?,?)', (userId, 'sendEmail', '', verifyCode))
             action = 'sendEmail'
         else:
             action = row[0]
@@ -27,15 +31,17 @@ def getAction(userId):
         print('Error: ' + str(e))
 
 
-def getEmail(userId):
+def getInfo(userId):
     global email
+    global verifyCode
     try:
         conn = sqlite3.connect('user.db', check_same_thread=False)
         c = conn.cursor()
-        c.execute('SELECT email from user where user_id = ?', (userId,))
+        c.execute('SELECT email, verify_code from user where user_id = ?', (userId,))
         row = c.fetchone()
         if row is not None:
             email = row[0]
+            verifyCode = row[1]
         conn.close()
     except Exception as e:
         print('Error: ' + str(e))
@@ -59,15 +65,16 @@ def start(bot, update):
 def doAction(bot, update):
     global action
     global email
+    global verifyCode
     getAction(update.message.from_user.id)
+    getInfo(update.message.from_user.id)
     try:
         text = update.message.text
-        verifyCode = '123456'
         if action == 'sendEmail':
             email = text;
             sendEmail(bot, update, text, verifyCode)
         elif action == 'insertDB':
-            insertDB(bot, update, text, verifyCode)
+            insertDB(bot, update, text)
         elif action == 'Done':
             bot.send_message(update.message.chat_id, 'You are verified!')
     except Exception as e:
@@ -108,19 +115,21 @@ def sendEmail(bot, update, receiver, verifyCode):
         bot.send_message(update.message.chat_id, 'Send email error. Please enter your email: ')
 
 
-def insertDB(bot, update, text, verifyCode):
+def insertDB(bot, update, text):
     global action
     global email
+    global verifyCode
     getAction(update.message.from_user.id)
-    getEmail(update.message.from_user.id)
+    getInfo(update.message.from_user.id)
     if text == verifyCode:
         try:
             conn = sqlite3.connect('telegram.db', check_same_thread=False)
             c = conn.cursor()
-            c.execute('''CREATE TABLE IF NOT EXISTS telegram(user_id text, user_name text, email text)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS telegram(user_id text, user_name text, name text)''')
             c.execute('INSERT INTO telegram VALUES (?,?,?)',
-                      (update.message.from_user.username,
-                       update.message.from_user.last_name + ' ' + update.message.from_user.first_name, email))
+                       (update.message.from_user.id,
+                        update.message.from_user.username,
+                        update.message.from_user.last_name + ' ' + update.message.from_user.first_name))
             conn.commit()
             conn.close()
             
